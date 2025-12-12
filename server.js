@@ -20,39 +20,52 @@ async function getAccessToken() {
 
   if (!data.access_token) {
     console.error("OAuth error:", data);
-    throw new Error("Failed Royal Mail token");
+    throw new Error("Token failed");
   }
 
   return data.access_token;
 }
 
-app.get("/track", async (req, res) => {
+app.get("/check", async (req, res) => {
   const code = req.query.code;
   if (!code) return res.json({ status: "Missing code" });
 
   try {
     const token = await getAccessToken();
 
-    const response = await fetch(
-      `https://api.parcel.royalmail.com/api/v1/tracking/${code}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        },
+    const url = `https://api.parcel.royalmail.com/api/v1/shipping-events/${code}`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json"
       }
-    );
+    });
 
     const data = await response.json();
-    const status = data?.mailPiece?.summary?.statusDescription || "Unknown";
 
-    res.json({ status, raw: data });
+    if (!data?.events || data.events.length === 0) {
+      return res.json({ status: "Not Delivered" });
+    }
+
+    const delivered = data.events.find(e =>
+      e.description?.toLowerCase().includes("delivered")
+    );
+
+    if (delivered) {
+      return res.json({
+        status: "Delivered",
+        timestamp: delivered.timestamp
+      });
+    }
+
+    return res.json({ status: "In Transit" });
   } catch (err) {
     console.error(err);
-    res.json({ status: "Unknown" });
+    return res.json({ status: "Unknown" });
   }
 });
 
 app.listen(3000, () => {
-  console.log("Royal Mail API running on port 3000");
+  console.log("C&D Delivery Checker running on port 3000");
 });
