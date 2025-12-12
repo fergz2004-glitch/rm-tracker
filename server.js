@@ -6,9 +6,7 @@ const app = express();
 app.get("/track", async (req, res) => {
   const code = req.query.code;
 
-  if (!code) {
-    return res.json({ status: "Missing code" });
-  }
+  if (!code) return res.json({ status: "Missing code" });
 
   try {
     const browser = await puppeteer.launch({
@@ -18,29 +16,52 @@ app.get("/track", async (req, res) => {
 
     const page = await browser.newPage();
 
-    console.log("Loading tracking page...");
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
+    );
+
+    // Listen for Royal Mail API JSON response
+    let trackingResult = null;
+
+    page.on("response", async (response) => {
+      const url = response.url();
+
+      if (url.includes("/track-your-item/track")) {
+        try {
+          const json = await response.json();
+          trackingResult = json;
+        } catch (e) {}
+      }
+    });
+
+    // Load RM tracking page
     await page.goto("https://www.royalmail.com/track-your-item", {
       waitUntil: "networkidle2"
     });
 
     await page.type("#tracking-number", code);
-    await page.click("button[type=submit]");
 
-    console.log("Waiting for results...");
-    await page.waitForSelector(".track-summary", { timeout: 20000 });
+    await Promise.all([
+      page.click("button[type=submit]"),
+      page.waitForNavigation({ waitUntil: "networkidle2" })
+    ]);
 
-    const status = await page.evaluate(() => {
-      const el = document.querySelector(".track-summary .status-description");
-      return el ? el.innerText.trim() : "Unknown";
-    });
+    await page.waitForTimeout(3000);
 
     await browser.close();
 
-    return res.json({ status });
+    if (!trackingResult) {
+      return res.json({ status: "Unknown" });
+    }
 
+    const status =
+      trackingResult?.mailPieces?.[0]?.summary?.statusDescription ||
+      "Unknown";
+
+    res.json({ status });
   } catch (err) {
-    console.error("Error:", err);
-    return res.json({ status: "Unknown" });
+    console.error(err);
+    res.json({ status: "Unknown" });
   }
 });
 
