@@ -1,70 +1,62 @@
 import express from "express";
-import puppeteer from "puppeteer";
+import fetch from "node-fetch";
 
 const app = express();
 
+const CLIENT_ID = process.env.RM_CLIENT_ID;
+const CLIENT_SECRET = process.env.RM_CLIENT_SECRET;
+
+async function getAccessToken() {
+  const response = await fetch(
+    "https://api.parcel.royalmail.com/oauth/token",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: `grant_type=client_credentials&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}`,
+    }
+  );
+
+  const data = await response.json();
+
+  if (!data.access_token) {
+    console.error("OAuth error:", data);
+    throw new Error("Failed to obtain Royal Mail access token");
+  }
+
+  return data.access_token;
+}
+
 app.get("/track", async (req, res) => {
   const code = req.query.code;
-
   if (!code) return res.json({ status: "Missing code" });
 
   try {
-    const browser = await puppeteer.launch({
-      headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    });
+    const token = await getAccessToken();
 
-    const page = await browser.newPage();
-
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
+    const response = await fetch(
+      `https://api.parcel.royalmail.com/api/v1/tracking/${code}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      }
     );
 
-    // Listen for Royal Mail API JSON response
-    let trackingResult = null;
-
-    page.on("response", async (response) => {
-      const url = response.url();
-
-      if (url.includes("/track-your-item/track")) {
-        try {
-          const json = await response.json();
-          trackingResult = json;
-        } catch (e) {}
-      }
-    });
-
-    // Load RM tracking page
-    await page.goto("https://www.royalmail.com/track-your-item", {
-      waitUntil: "networkidle2"
-    });
-
-    await page.type("#tracking-number", code);
-
-    await Promise.all([
-      page.click("button[type=submit]"),
-      page.waitForNavigation({ waitUntil: "networkidle2" })
-    ]);
-
-    await page.waitForTimeout(3000);
-
-    await browser.close();
-
-    if (!trackingResult) {
-      return res.json({ status: "Unknown" });
-    }
+    const data = await response.json();
 
     const status =
-      trackingResult?.mailPieces?.[0]?.summary?.statusDescription ||
-      "Unknown";
+      data?.mailPiece?.summary?.statusDescription || "Unknown";
 
-    res.json({ status });
-  } catch (err) {
-    console.error(err);
+    res.json({ status, raw: data });
+  } catch (error) {
+    console.error(error);
     res.json({ status: "Unknown" });
   }
 });
 
 app.listen(3000, () => {
-  console.log("Royal Mail tracker running on port 3000");
+  console.log("Royal Mail Tracking API Running on Port 3000");
 });
