@@ -11,10 +11,8 @@ async function getAccessToken() {
     "https://api.parcel.royalmail.com/oauth/token",
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: `grant_type=client_credentials&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}`,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `grant_type=client_credentials&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}`
     }
   );
 
@@ -22,7 +20,7 @@ async function getAccessToken() {
 
   if (!data.access_token) {
     console.error("OAuth error:", data);
-    throw new Error("Failed to obtain Royal Mail access token");
+    throw new Error("Failed Royal Mail token");
   }
 
   return data.access_token;
@@ -46,17 +44,15 @@ app.get("/track", async (req, res) => {
     );
 
     const data = await response.json();
-
-    const status =
-      data?.mailPiece?.summary?.statusDescription || "Unknown";
+    const status = data?.mailPiece?.summary?.statusDescription || "Unknown";
 
     res.json({ status, raw: data });
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     res.json({ status: "Unknown" });
   }
 });
 
 app.listen(3000, () => {
-  console.log("Royal Mail Tracking API Running on Port 3000");
+  console.log("Royal Mail API running on port 3000");
 });
