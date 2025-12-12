@@ -3,69 +3,48 @@ import fetch from "node-fetch";
 
 const app = express();
 
-const CLIENT_ID = process.env.RM_CLIENT_ID;
-const CLIENT_SECRET = process.env.RM_CLIENT_SECRET;
+// Placeholder credentials – replace later
+const CLIENT_ID = "YOUR_CLIENT_ID_HERE";
+const CLIENT_SECRET = "YOUR_CLIENT_SECRET_HERE";
 
-async function getAccessToken() {
-  const response = await fetch(
-    "https://api.parcel.royalmail.com/oauth/token",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `grant_type=client_credentials&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}`
-    }
-  );
+app.get("/track", async (req, res) => {
+  const code = req.query.code;
 
-  const data = await response.json();
-
-  if (!data.access_token) {
-    console.error("OAuth error:", data);
-    throw new Error("Token failed");
+  if (!code) {
+    return res.json({ status: "Missing code" });
   }
 
-  return data.access_token;
-}
-
-app.get("/check", async (req, res) => {
-  const code = req.query.code;
-  if (!code) return res.json({ status: "Missing code" });
-
   try {
-    const token = await getAccessToken();
-
-    const url = `https://api.parcel.royalmail.com/api/v1/shipping-events/${code}`;
+    const url = `https://api.royalmail.net/mailpieces/v2/${code}/events`;
 
     const response = await fetch(url, {
+      method: "GET",
       headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json"
+        "x-ibm-client-id": CLIENT_ID,
+        "x-ibm-client-secret": CLIENT_SECRET,
+        "Accept": "application/json"
       }
     });
 
+    if (!response.ok) {
+      return res.json({ status: "Unknown" });
+    }
+
     const data = await response.json();
 
-    if (!data?.events || data.events.length === 0) {
-      return res.json({ status: "Not Delivered" });
-    }
+    // Extract status safely
+    const status =
+      data?.mailPieces?.[0]?.events?.[0]?.eventDescription ||
+      data?.mailPieces?.[0]?.summary?.statusDescription ||
+      "Unknown";
 
-    const delivered = data.events.find(e =>
-      e.description?.toLowerCase().includes("delivered")
-    );
-
-    if (delivered) {
-      return res.json({
-        status: "Delivered",
-        timestamp: delivered.timestamp
-      });
-    }
-
-    return res.json({ status: "In Transit" });
+    return res.json({ status });
   } catch (err) {
-    console.error(err);
+    console.error("Error:", err);
     return res.json({ status: "Unknown" });
   }
 });
 
-app.listen(3000, () => {
-  console.log("C&D Delivery Checker running on port 3000");
-});
+// Render uses PORT environment variable
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Royal Mail tracker running on port ${PORT}`));
