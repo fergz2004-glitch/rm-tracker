@@ -32,8 +32,7 @@ app.get("/track", async (req, res) => {
         const response = await fetch(zenUrl);
         const html = await response.text();
 
-        console.log("HTML returned (first 500 chars):", html.substring(0, 500));
-
+console.log("FULL HTML FROM ZENROWS:\n\n", html);
         const $ = cheerio.load(html);
 
         // Extract tracking status
