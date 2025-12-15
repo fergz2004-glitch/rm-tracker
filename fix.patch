@@ -1,0 +1,82 @@
+diff --git a/server.js b/server.js
+new file mode 100644
+index 0000000..b12fe77
+--- /dev/null
++++ b/server.js
+@@ -0,0 +1,88 @@
++import express from "express";
++import fetch from "node-fetch";
++import * as cheerio from "cheerio";   // ✔ Correct ESM import
++import dotenv from "dotenv";
++
++dotenv.config();
++
++const app = express();
++
++app.get("/track", async (req, res) => {
++    const code = req.query.code;
++
++    if (!code) {
++        return res.json({ error: "Missing ?code=" });
++    }
++
++    if (!process.env.ZENROWS_API_KEY) {
++        return res.json({ error: "Missing ZENROWS_API_KEY in environment settings." });
++    }
++
++    const apiKey = process.env.ZENROWS_API_KEY;
++
++    // Royal Mail tracking URL
++    const targetUrl = `https://www.royalmail.com/track-your-item#/tracking-results/${code}`;
++
++    // ZenRows API request
++    const zenUrl = `https://api.zenrows.com/v1/?apikey=${apiKey}&url=${encodeURIComponent(
++        targetUrl
++    )}&js_render=true&premium_proxy=true`;
++
++    try {
++        const response = await fetch(zenUrl);
++        const html = await response.text();
++
++        console.log("HTML returned (first 500 chars):", html.substring(0, 500));
++
++        const $ = cheerio.load(html);
++
++        let status =
++            $("span[class*=status], div[class*=status], h2").first().text().trim() ||
++            "Unknown";
++
++        return res.json({
++            code,
++            status,
++        });
++    } catch (err) {
++        console.error("Scraping error:", err);
++        return res.json({ error: "Scraping failed" });
++    }
++});
++
++const PORT = process.env.PORT || 10000;
++app.listen(PORT, () => console.log(`Royal Mail tracker running on port ${PORT}`));
++
+diff --git a/package.json b/package.json
+new file mode 100644
+index 0000000..b23922c
+--- /dev/null
++++ b/package.json
+@@ -0,0 +1,23 @@
++{
++  "name": "rm-tracker",
++  "version": "1.0.0",
++  "type": "module",
++  "main": "server.js",
++  "scripts": {
++    "start": "node server.js"
++  },
++  "dependencies": {
++    "express": "^4.19.2",
++    "node-fetch": "^3.3.2",
++    "dotenv": "^16.3.1",
++    "cheerio": "^1.0.0-rc.12"
++  }
++}
