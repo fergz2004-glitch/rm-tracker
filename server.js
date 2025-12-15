@@ -1,45 +1,50 @@
 import express from "express";
 import fetch from "node-fetch";
-import { load } from "cheerio";
+import * as cheerio from "cheerio";
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("Royal Mail tracker running");
+});
 
 app.get("/track", async (req, res) => {
   const code = req.query.code;
-  if (!code) return res.json({ status: "Missing code" });
+  if (!code) return res.json({ error: "Missing code" });
 
   try {
-    // HTML endpoint behind the Royal Mail UI
-    const url = `https://www.royalmail.com/track-your-item/track-results?trackingNumber=${code}`;
+    const url = `https://www.royalmail.com/track-your-item#/tracking-results/${code}`;
 
     const response = await fetch(url, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-        Accept: "text/html"
-      }
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
     });
 
     const html = await response.text();
-    const $ = load(html);
 
-    // Look for the main status headline, e.g. Delivered, Retained, Attempted, etc.
-    const h2List = $("h2")
-      .map((i, el) => $(el).text().trim())
-      .get();
+    // 🔥 DEBUG LOG — this shows the first 500 characters received from Royal Mail
+    console.log("HTML returned from Royal Mail:", html.substring(0, 500));
 
-    let status = h2List.find(t => t.length > 0) || "Unknown";
+    // Parse the HTML
+    const $ = cheerio.load(html);
 
-    return res.json({ status });
+    // Try scraping various possible status locations
+    let status =
+      $(".tracking-progress > li strong").first().text().trim() ||
+      $(".status-summary h2").first().text().trim() ||
+      $(".panel h2").first().text().trim() ||
+      "Unknown";
 
+    res.json({ status });
   } catch (err) {
-    console.error("Scrape error:", err);
-    return res.json({ status: "Unknown" });
+    console.error("ERROR scraping Royal Mail:", err);
+    res.json({ status: "Error" });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () =>
-  console.log(`Royal Mail tracker running on port ${PORT}`)
-);
-
+app.listen(PORT, () => {
+  console.log(`Royal Mail tracker running on port ${PORT}`);
+});
